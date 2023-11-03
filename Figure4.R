@@ -1,113 +1,44 @@
 
-library(ggplot2)
-library(dplyr)
-library(magrittr)
-library(cowplot)
-library(tidyr)
-###################### loading data for rainbow trout ##############################################
-### rainbow
 
-rainbow = read.table("outgroup_data/02.rainbow/all_withoutquantiles.CDS.sumstats.4000000_mb", h = T)  #the data for figure 4
-rainbow_pop = read.table("outgroup_data/02.rainbow/all.4mb.txt", h = T)      #the data for figure supp (separated by pop)
-
-models <- rainbow_pop %>%
-  group_by(POP) %>% # You can add here additional grouping variables if your real data set enables it
-  do(mod = lm(pNpS ~ medianGC3, data = .)) %>%
-  mutate(Slope = summary(mod)$coeff[2], 
-         pvalue = summary(mod)$coeff[8],
-         R2adj = summary(mod)$adj.r.squared) %>%
-  select(-mod)
-
-models
-
-### chinook
-chinook <- read.table("outgroup_data/01.chinook/POP_withoutquantiles.CDS.sumstats.4000000_mb" , h = T)
-mod <- lm(pNpS ~ medianGC3, data = chinook) #0.9338
-slope = summary(mod)$coeff[2] 
-pval = summary(mod)$coeff[8]
-R2 = summary(mod)$adj.r.squared
-slope
-pval
-R2
-
-sockeye <- read.table("outgroup_data/03.sockeye//all.CDS.4fold.4mb.txt", h = T)
-
-model_sock <- sockeye %>%
-  group_by(POP) %>% # You can add here additional grouping variables if your real data set enables it
-  do(mod = lm(pNpS ~ medianGC3, data = .)) %>%
-  mutate(Slope = summary(mod)$coeff[2], 
-         pvalue = summary(mod)$coeff[8],
-         R2adj = summary(mod)$adj.r.squared) #%>%
-  #select(-mod)
-
-model_sock
-
-KOKANEE <- read.table("outgroup_data/03.sockeye/KOKANEE_withoutquantiles.4fold.CDS.sumstats.4000000_mb", h = T) #for figure 4 only kokanne from chilo
-SOCKEYE <- read.table("outgroup_data/03.sockeye/SOCKEYE_withoutquantiles.4fold.CDS.sumstats.4000000_mb", h = T) #for figure 4 only Socekye from Meadows
-summary(lm(KOKANEE$medianGC3 ~ KOKANEE$pNpS))
-summary(lm(SOCKEYE$medianGC3 ~ SOCKEYE$pNpS))
+#purpose: construct figure 2 from paper.
+# data obtained from pNpS pipeline:
+# 1 - https://github.com/QuentinRougemont/PiNPiS
+# 2 - smc++: https://github.com/QuentinRougemont/smcpp_input
+# 3 - grapes: to add to github
+#note: whole genome generated for coho and outgroup using gatk with the pipeline here:
+#https://github.com/QuentinRougemont/gatk_haplotype
 
 
-pink <- read.table("outgroup_data/04.pink/pink.even.odd.GC3_pnps.txt", h = T)
-model_pink <- pink %>%
-  group_by(POP) %>% # You can add here additional grouping variables if your real data set enables it
-  do(mod = lm(pNpS ~ medianGC3, data = .)) %>%
-  mutate(Slope = summary(mod)$coeff[2], 
-         pvalue = summary(mod)$coeff[8],
-         R2adj = summary(mod)$adj.r.squared) #%>%
-#select(-mod)
+#------------------------------------------------- check if scripts are installed and load them -----------------------------------------#
+if("dplyr" %in% rownames(installed.packages()) == FALSE)
+{install.packages("dplyr", repos="https://cloud.r-project.org") }
+if("ggplot2" %in% rownames(installed.packages()) == FALSE)
+{install.packages("ggplot2", repos="https://cloud.r-project.org") }
+if("data.table" %in% rownames(installed.packages()) == FALSE)
+{install.packages("data.table", repos="https://cloud.r-project.org") }
+if("magrittr" %in% rownames(installed.packages()) == FALSE)
+{install.packages("maggritr", repos="https://cloud.r-project.org") }
+if("cowplot" %in% rownames(installed.packages()) == FALSE)
+{install.packages("cowplot", repos="https://cloud.r-project.org") }
 
-model_pink
+## load libs
+libs <- c('dplyr','ggplot2','data.table','magrittr', 'cowplot')
+invisible(lapply(libs, library, character.only = TRUE))
 
-coho <- read.table("08.piNpiS/pnps.allCDS.01_03_21.txt.gz", h = T)
-coho <- read.table("08.piNpiS/pnps_gc3.4000000.txt.gz", h = T)
-coho <- read.table("08.piNpiS/pnps_gc3.4000000.01.03.txt.gz", h = T)
+#-------------------------------------------------   load the data and metadata -----------------------------------------#
 
-strata <- read.table("08.piNpiS//strata3.txt", h = T) %>% select(POP, region)
-head(coho)
+setwd("08.piNpiS")
+region <- read.table("strata3.txt",T)                   #various metadata
 
-model_coho <- coho %>%
-  group_by(POP) %>% # You can add here additional grouping variables if your real data set enables it
-  do(mod = lm(pNpS ~ medianGC3, data = .)) %>%
-  mutate(Slope = summary(mod)$coeff[2], 
-         pvalue = summary(mod)$coeff[8],
-         R2adj = summary(mod)$adj.r.squared) #%>%
-#select(-mod)
-model_coho
+region$dist_tot = region$dist_max_km + region$dist_SCO_QR #distance to the southern site + distance to water mouth
 
-## ----------------------------------------------------------------------------##
-##correlation between pnps from GC conservative site and GC3:
-coho_gc_cons <- read.table("08.piNpiS/allpop.pnpsGCcons.txxt" , h = F) %>% 
-    set_colnames(., c("POP","bin", "n", "piN", "piS", "pNpS"))
+pnps = read.table("pnps.allCDS.01_03_21.txt.gz",T)        #pnps value
 
-df <-coho_gc_cons[order(coho_gc_cons$POP, coho_gc_cons$n),]
+region <- select(region, POP, region, dist_tot, N_recent) #N_recent = smc++ ne over 2e5years
+pnps <- merge(pnps, region)
 
-#on recupere le GC3 #this code needs to be updated #not clean 
-w <- rep(sort(rep(seq(1, 14), 2)), 14)
-coho$vec=paste0(coho$POP,"_", w)
-medgc3 <- aggregate(coho$medianGC3, by=list(coho$vec), mean)
-medgc3 <- tidyr::separate(medgc3, Group.1, c("POP","bin"), sep="_")
-medgc3pnps <- merge(df, medgc3)
+summary(lm(pnps$pNpSratio ~ pnps$dist_tot)) #test correlations
 
-cor(medgc3pnps$pNpS, medgc3pnps$x) #juste to look at correlation between pnps and gc3 broadly
-
-colnames(medgc3pnps)[7] <- "medianGC3"
-head(medgc3pnps)
-
-model_cohoGC <- medgc3pnps %>%
-  group_by(POP) %>% # You can add here additional grouping variables if your real data set enables it
-  do(mod = lm(pNpS ~ medianGC3, data = .)) %>%
-  mutate(Slope = summary(mod)$coeff[2], 
-         pvalue = summary(mod)$coeff[8],
-         R2adj = summary(mod)$adj.r.squared) #%>%
-#select(-mod)
-model_cohoGC
-
-medgc3pnps <- merge(medgc3pnps, strata)
-medgc3pnps$POP <- as.factor(medgc3pnps$POP)
-
-
-#all data are ready for plotting now
 
 #------------------------------------------------------- PLOT ------------------------------------------------------------#
 ### define general theme:
@@ -118,15 +49,6 @@ th_plot <-     theme(axis.title.x=element_text(size=14, family="Helvetica",face=
                      strip.text.x = element_text(size=18),
                      panel.grid.major = element_blank(),
                      legend.position = "none")
-
-th2 <-   theme_bw() +
-  theme(legend.key.size = unit(2.5,"line"),
-        panel.border = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = 'black', size = 1.25), axis.ticks = element_line(colour = 'black', size = 1.25), 
-        axis.text.x = element_text(colour="black",size=20,angle=0,hjust=.5,vjust=.5,face="plain"),
-        axis.text.y = element_text(colour="black",size=20,angle=0,hjust=.5,vjust=.5,face="plain"),  
-        axis.title.x = element_text(colour="black",size=30,angle=0,hjust=.5,vjust=.2,face="italic"),
-        axis.title.y = element_text(colour="black",size=30,angle=90,hjust=.5,vjust=.5,face="italic"))
 
 ##grey colors for ppt ONLY:
 grey <- theme(panel.background = element_rect(fill = "gray20", colour = "lightblue", size = 0.5, linetype = "solid"),
@@ -139,100 +61,134 @@ grey <- theme(panel.background = element_rect(fill = "gray20", colour = "lightbl
 
 #------------------------------------------------------------------------------------------------------------------#
 #------------------------------------ now plot --------------------------------------------------------------------#
-############## rainbow only ############################
-coho <- merge(coho, strata)
-myColors <- c("blue","orange","red","green","darkviolet","springgreen4")
+pnps$region<-factor(pnps$region)
+myColors <- c("blue","orange","red","green","darkviolet","springgreen4") #outgroups,"black","black","grey")
+names(myColors) <- levels(pnps$region)
+colScale <- scale_colour_manual(name = "region",values = myColors)
 
-coho$POP <- as.factor(coho$POP)
-coho$region <- as.factor(coho$region)
-levels(coho$region)
-names(myColors) <- levels(coho$region)
+p <- ggplot(data=pnps,
+            aes(x=dist_tot, y=pNpSratio)) + 
+  stat_smooth(method="lm", fill="gray87") + 
+  theme_bw() +
+  geom_point(aes(colour=factor(region)),size=4) + 
+  colScale + 
+  labs(x="Distance from the southernmost site (km)", y = expression(pi["n"]/pi["s"]))  +
+   scale_x_continuous(limits = c(0, 8000)) +
+   scale_y_continuous(limits = c(0.26, 0.30)) #pour NW
+   #scale_y_continuous(limits = c(0.20, 0.30)) #pour full
 
-colScale <- scale_colour_manual(name = "population",values = myColors)
-
-head(coho)
-
-plt <- ggplot(coho,aes(x = medianGC3, y = pNpS, colour = region))+
-  geom_smooth(method="lm", fill=NA)+
-  geom_point(cex=2) + 
-  xlab("GC3")+ ylab(expression(pi[N]/pi[S])) +
-  colScale+
-  th2 +
-  guides(col=guide_legend(ncol = 3)) + 
-  theme(legend.position = c(0.5,0.75))
-
-plt <-  plt + annotate(geom="text", 
-                                     x=0.58, y=0.2, 
-                                     label= "paste(italic(R) ^ 2, \" = 0.62 - 0.96 p <2e-16\")", 
-                                     parse = TRUE,
-                                     color="black", size=6, face = "plain")
-
-plt
+p <- p + th_plot
+p1 <- p + annotate(geom="text", 
+                  x=3650, y=0.295, 
+                  label= "paste(italic(R) ^ 2, \" = .73 p <0.0001***, slope = 1.7e-06\")", 
+                  parse = TRUE,
+                  color="black", size=5)
+#p
+p1
 
 
-head(medgc3pnps)
-myColors <- c("blue","orange","green","orange",
-              "red","blue","blue","darkviolet",
-              "blue","green","orange",
-              "springgreen4","blue","green")
-names(myColors) <- levels(coho$POP)
-colScale <- scale_colour_manual(name = "POP",values = myColors)
+###---------------------------------ajouter panel B) omegaNA distance --------------------------------------------------
+grape = read.table("../09.DFE/Table_mainresults_Grapes.txt",T)
+grape$dist_tot=grape$dist_to_ocean+grape$dist_to_source
 
-plt_gccons <- ggplot(medgc3pnps,aes(x = medianGC3, y =pNpS, colour=POP))+
-  geom_smooth(method="lm", fill=NA)+
-  geom_point(cex=2) + 
-  xlab("GC3")+ ylab(expression(SFSbased * ~ pi[N]/pi[S] ** GCcons)) +
-  colScale+
-  th2 +
-  theme(legend.position = "none")
+# test many possible correlation ------------------------------------------------
+attach(grape)
+cor(allsites_3sp_omegaNA, dist_to_ocean )
+cor(allsites_3sp_omegaNA, dist_to_source )
+cor(allsites_3sp_omegaNA, dist_tot )
 
-plt_gconcs <-  plt_gccons + annotate(geom="text", 
-                     x=0.58, y=0.2, 
-                     label= "paste(italic(R) ^ 2, \" = 0.665 - 0.876 p <2e-16\")", 
-                     parse = TRUE,
-                     color="black", size=6, face = "plain")
-plt_gccons
+summary(lm(allsites_3sp_omegaNA ~ dist_to_ocean ))
+summary(lm(allsites_3sp_omegaNA ~ dist_to_source ))
+summary(lm(allsites_3sp_omegaNA ~ dist_tot ))
 
-KOKANEE$POP <- "kokannee"
-SOCKEYE$POP <- SOCKEYE$species <- "sockeye" 
-KOKANEE$species <- "sockeye"
-chinook$POP <- chinook$species <- "chinook"
-rainbow$POP <- rainbow$species <- "rainbow"
-sockeye$species <- "sockeye"
-coho$species <- "coho"
-pink$species <- "pink"
+summary(lm(allsites_3sp_omegaA ~ dist_to_ocean ))
+summary(lm(allsites_3sp_omegaA ~ dist_to_source ))
+summary(lm(allsites_3sp_omegaA ~ dist_tot ))
 
-#reorder pink and chinook to match other dataset
-chinook <- chinook[,c(10,1:9)]
-rainbow <- rainbow[,c(10,1:9)]
-KOKANEE <- KOKANEE[,c(10,1:9)]
-SOCKEYE <- SOCKEYE[,c(10,1:9)]
-pink$POP[pink$POP == "EVEN"] <- "pink even"
-pink$POP[pink$POP == "ODD"] <- "pink odd"
-coho_gc_cons$species <- "coho"
 
-#combine outgroup for plotting
-#Figure 4:
-outgroup <- rbind(SOCKEYE, KOKANEE, rainbow, chinook, pink)
-colnames(outgroup)[1] <- "subspecies"
-p <- ggplot(data=outgroup ,aes(y=pNpS, x=medianGC3, colour = subspecies)) +
-  stat_smooth(method="lm", se = FALSE) + 
-  geom_point(size=3) + 
+colnames(grape)
+summary(lm(allsites_3sp_alpha ~ dist_tot))
+summary(lm(allsites_3sp_alpha ~ dist_to_ocean))
+summary(lm(allsites_3sp_alpha ~ dist_to_ocean * dist_to_source))
+summary(lm(allsites_3sp_omegaNA ~ dist_to_ocean * dist_to_source))
+summary(lm(allsites_3sp_omegaNA ~ latitude  * longitude))
+
+summary(lm(allsites_3sp_omegaA ~ dist_tot))
+
+#--------------------------------------------------- DO THE PLOT ---------------------------------------------------------------------
+myColors <- c("blue","orange",
+              "red","green",
+              "darkviolet",
+              "springgreen4")
+grape$region<-as.factor(grape$region)
+names(myColors) <- levels(grape$region)
+colScale <- scale_colour_manual(name = "region",values = myColors)
+
+#relation entre piS et omegaA
+summary(lm(allsites_3sp_alpha ~ pSratio))
+p3 <- ggplot(data=grape,
+            aes(x=pSratio, y=allsites_3sp_alpha)) +
+  stat_smooth(method="lm", fill="gray87") + 
+  theme_bw() +
+  geom_point(aes(colour=factor(region)),size=4) +
+  colScale + 
+  labs(x=expression(pi["s"]), y = expression(alpha)) # +
+
+p3 <- p3 + th_plot
+
+p3b <- p3+ annotate(geom="text", 
+                  x=0.001, y=-0.05, 
+                  label= "paste(italic(R) ^ 2, \" = .63 p = 0.0004\")", 
+                  parse = TRUE,
+                  color="black", size=5)
+p3b
+
+#--------------------------------------------------- relationship between smc++ Ne and alpha ------------------------------------------ #
+#### relation entre Ne et alpha #####
+
+summary(lm(pnps$pSratio ~ Ne_estimate))
+summary(lm(pnps$pNpSratio ~ Ne_estimate))
+summary(lm(allsites_3sp_alpha ~ Ne_estimate))
+
+#on fait le graphe de la relation:
+p4 <- ggplot(data=grape,
+            aes(x=Ne_estimate, y=allsites_3sp_alpha)) + 
+  stat_smooth(method="lm", fill="gray87") + 
   theme_bw() + 
-  labs(x="GC3", y =  expression(pi["n"]/pi["s"]) )   + 
-  th2 + theme(legend.position = c(0.5,0.9)) +
-  guides(col=guide_legend(ncol=2)) 
-  
-p <- p +  annotate(geom="text", 
-                    x=0.58, y=0.2, 
-                    label= "paste(italic(R) ^ 2, \" = 0.91 - 0.97 p <2e-16\")", 
+  geom_point(aes(colour=factor(region)),size=4) + 
+  colScale +
+  labs(x=expression(N["e"]), y = expression(alpha)) # +
+p4 <- p4 + th_plot
+p4 <- p4 + annotate(geom="text", 
+                  x=30000, y=0.05, 
+                  label= "paste(italic(R) ^ 2, \" = .49 p = 0.004\")", 
+                  parse = TRUE,
+                  color="black", size=5)
+p4
+
+#---------------------------------------- relationship omegaNa and distance ---------------------------------------------
+summary(lm(allsites_3sp_omegaNA ~ dist_to_ocean * dist_to_source)) #very cool with interaction
+summary(lm(allsites_3sp_omegaNA ~ dist_tot))
+
+p2 <- ggplot(data=grape,
+            aes(x=dist_to_source, y=allsites_3sp_omegaNA)) + 
+  stat_smooth(method="lm", fill="gray87") + 
+  theme_bw() + 
+  geom_point(aes(colour=factor(region)),size=4) + 
+  colScale + 
+  labs(x="distance from the southernmost site (km)", y = expression(omega["NA"]))  +
+  scale_x_continuous(limits = c(0, 8000)) +
+  scale_y_continuous(limits = c(0.15,0.30))
+
+p2 <- p2 + th_plot
+p2 <- p2 + annotate(geom="text", 
+                    x=4000, y=0.29, 
+                    label= "paste(italic(R) ^ 2, \" = .56 p = 0.0011\")", 
                     parse = TRUE,
-                    color="black", size=6, face = "plain")
-p
+                    color="black", size=5)
 
+############### combine all "####################################################
 
-all <- plot_grid(plt, plt_gccons, p, ncol = 3, labels = "AUTO") #, rel_widths = c(0.5,1))
-all
-
-ggsave(filename = "Figure4.svg", all, units = "cm", width = 40, height = 15, dpi = 400)
-getwd()
+pdf(file = "load.pdf", 12,7)
+plot_grid(p1,p2,p3b,p4, nrow = 2, labels = "AUTO")
+dev.off()
